@@ -16,13 +16,14 @@ from langchain_community.document_loaders import (
     UnstructuredFileIOLoader,
 )
 from langchain_community.vectorstores import Qdrant
-from unstructured.documents.base import Document
+from langchain_core.documents import Document
 
 from src.config import DEFAULT_CHUNK_SIZE, GOOGLE_ACCOUNT_FILE, UPSERT_BATCH_SIZE
 
 logger = logging.getLogger(__name__)
 
-def load_gdrive_documents(folder_id: str, ingestion_id: str) -> Generator[dict, None, None]:
+
+def load_gdrive_documents(folder_id: str, ingestion_id: str) -> Generator[Document, None, None]:
     """Load documents from a specified Google Drive folder.
 
     Parameters:
@@ -59,7 +60,9 @@ def load_gdrive_documents(folder_id: str, ingestion_id: str) -> Generator[dict, 
         sys.exit(1)
 
 
-def split_documents(documents: Iterable[dict], chunk_size: int = DEFAULT_CHUNK_SIZE) -> Generator[Document, None, None]:
+def split_documents(
+    documents: Iterable[Document], chunk_size: int = DEFAULT_CHUNK_SIZE
+) -> Generator[Document, None, None]:
     """Split documents into smaller chunks based on the specified chunk size.
 
     Parameters:
@@ -77,7 +80,7 @@ def split_documents(documents: Iterable[dict], chunk_size: int = DEFAULT_CHUNK_S
         chunk_overlap=0,
         separators=["\n\n", "\n", ".", "!", "?", ",", " ", ""],
     )
-    doc_splits = text_splitter.split_documents(documents)  # type: ignore[arg-type]
+    doc_splits = text_splitter.split_documents(documents)
     for idx, split in enumerate(doc_splits):
         split.metadata["chunk"] = idx
         yield split

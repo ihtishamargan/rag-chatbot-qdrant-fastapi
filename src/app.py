@@ -6,7 +6,6 @@
 Utilizes OpenAI embeddings and Qdrant for vector storage and similarity search.
 """
 
-
 import logging
 from typing import Any
 
@@ -25,7 +24,7 @@ from src.config import (
     QDRANT_COLLECTION_NAME,
     QDRANT_URL,
 )
-from src.extraction.rag import run_rag
+from src.extraction.retrieval import run_rag
 from src.ingestion.ingest import ingest_gdrive_to_vector_store
 from src.utils.ingestion import get_ingestion_id
 
@@ -35,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
+
 class IngestionRequest(BaseModel):
     """Request model for document ingestion from Google Drive.
 
@@ -43,6 +43,7 @@ class IngestionRequest(BaseModel):
     """
 
     gdrive_id: str
+
 
 class RetrievalRequest(BaseModel):
     """Request model for retrieving documents similar to a query.
@@ -61,6 +62,7 @@ class RetrievalRequest(BaseModel):
     injection_id: str | None = None
     source: str | None = None
 
+
 class RAGRequest(BaseModel):
     """Request model for Retrieval-Augmented Generation (RAG).
 
@@ -78,6 +80,7 @@ class RAGRequest(BaseModel):
     injection_id: str | None = None
     source: str | None = None
 
+
 def get_qdrant_client() -> Qdrant:
     """Initialize the Qdrant client."""
     embeddings = OpenAIEmbeddings(model=EMBEDDINGS_MODEL)
@@ -93,6 +96,7 @@ def get_qdrant_client() -> Qdrant:
 
     return Qdrant(client, QDRANT_COLLECTION_NAME, embeddings)
 
+
 # Exception handler for generic exceptions
 @app.exception_handler(Exception)
 def exception_handler(_: Any, exc: Exception | int) -> JSONResponse:
@@ -100,6 +104,7 @@ def exception_handler(_: Any, exc: Exception | int) -> JSONResponse:
 
     logger.error("an exception occurred: %s", str(Exception))
     return JSONResponse(status_code=500, content={"message": "an unhandled exception occurred", "exc": str(exc)})
+
 
 @app.post("/ingest/gdrive")
 async def ingest_documents(
@@ -113,6 +118,7 @@ async def ingest_documents(
     ingestion_id = get_ingestion_id()
     background_tasks.add_task(ingest_gdrive_to_vector_store, request.gdrive_id, qdrant, ingestion_id)
     return {"message": f"Ingestion started, your ingestion ID is {ingestion_id}"}
+
 
 @app.post("/retrieve")
 async def retrieve_documents(request: RetrievalRequest, qdrant: Qdrant = Depends(get_qdrant_client)) -> dict[str, str]:
@@ -141,4 +147,3 @@ async def process_rag_request(
     """
     result = run_rag(qdrant, request.question, request.k, request.folder_id)
     return {"response": result}
-
