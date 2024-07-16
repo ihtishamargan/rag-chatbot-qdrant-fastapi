@@ -6,11 +6,13 @@
 Utilizes OpenAI embeddings and Qdrant for vector storage and similarity search.
 """
 
+
 import logging
 
-from fastapi import FastAPI
+from fastapi import BackgroundTasks, Depends, FastAPI
 from langchain_community.vectorstores import Qdrant
 from langchain_openai import OpenAIEmbeddings
+from pydantic import BaseModel
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
@@ -21,6 +23,8 @@ from src.config import (
     QDRANT_COLLECTION_NAME,
     QDRANT_URL,
 )
+from src.ingestion.ingest import ingest_gdrive_to_vector_store
+from src.utils.ingestion import get_ingestion_id
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -28,6 +32,14 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
+class IngestionRequest(BaseModel):
+    """Request model for document ingestion from Google Drive.
+
+    Attributes:
+        gdrive_id: The Google Drive ID of the document to be ingested.
+    """
+
+    gdrive_id: str
 
 def get_qdrant_client() -> Qdrant:
     """Initialize the Qdrant client."""
@@ -43,3 +55,18 @@ def get_qdrant_client() -> Qdrant:
         )
 
     return Qdrant(client, QDRANT_COLLECTION_NAME, embeddings)
+
+
+
+@app.post("/ingest/gdrive")
+async def ingest_documents(
+    request: IngestionRequest,
+    background_tasks: BackgroundTasks,
+    qdrant: Qdrant = Depends(get_qdrant_client),
+) -> dict[str, str]:
+    """Endpoint to start the ingestion of documents from Google Drive into the vector store.
+    The ingestion process is executed as a background task.
+    """
+    ingestion_id = get_ingestion_id()
+    background_tasks.add_task(ingest_gdrive_to_vector_store, request.gdrive_id, qdrant, ingestion_id)
+    return {"message": f"Ingestion started, your ingestion ID is {ingestion_id}"}
