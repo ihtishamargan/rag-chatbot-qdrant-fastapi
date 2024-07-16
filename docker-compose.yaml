@@ -1,0 +1,16 @@
+version: '0.1'
+
+services:
+  app:
+    build:
+      dockerfile: ./Dockerfile
+      context: .
+      target: install
+    ports:
+      - '8000:8000'
+    volumes:
+      - ./src:/app/src/:cached
+      - ./prompts/:/app/prompts/:cached
+    env_file:
+      - .env
+    command: ["pdm", "run", "start"]

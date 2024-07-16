@@ -1,0 +1,4 @@
+From the provided context:
+    {context}
+
+    Question: {question}
