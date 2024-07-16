@@ -15,9 +15,10 @@ from langchain_community.document_loaders import (
     GoogleDriveLoader,
     UnstructuredFileIOLoader,
 )
-
-from src.config import GOOGLE_ACCOUNT_FILE, DEFAULT_CHUNK_SIZE
+from langchain_community.vectorstores import Qdrant
 from unstructured.documents.base import Document
+
+from src.config import DEFAULT_CHUNK_SIZE, GOOGLE_ACCOUNT_FILE, UPSERT_BATCH_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -80,3 +81,36 @@ def split_documents(documents: Iterable[dict], chunk_size: int = DEFAULT_CHUNK_S
     for idx, split in enumerate(doc_splits):
         split.metadata["chunk"] = idx
         yield split
+
+
+def ingest_gdrive_to_vector_store(gdrive_id: str, qdrant: Qdrant, ingestion_id: str) -> None:
+    """Ingest documents from a Google Drive folder into a Qdrant vector store.
+
+    Parameters:
+        gdrive_id (str): The ID of the Google Drive folder.
+        qdrant (Qdrant): The Qdrant vector store instance.
+
+    Raises:
+        SystemExit: If ingestion fails.
+    """
+    batch_size = UPSERT_BATCH_SIZE
+    batch = []
+
+    try:
+        for document in load_gdrive_documents(folder_id=gdrive_id, ingestion_id=ingestion_id):
+            for doc_split in split_documents([document]):
+                batch.append(doc_split)
+                if len(batch) >= batch_size:
+                    qdrant.add_documents(batch)
+                    batch = []
+
+        # Process the remaining batch if it's not empty
+        if batch:
+            qdrant.add_documents(batch)
+
+    except ValueError as e:
+        error_message = f"An error occurred during ingestion for ingestion_id= {ingestion_id}: {e}"
+        logger.error(error_message)
+        sys.exit(1)
+    success_message = f"Ingestion completed successfully for ingestion_id: {ingestion_id}"
+    logger.info(success_message)
