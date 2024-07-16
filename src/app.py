@@ -8,8 +8,10 @@ Utilizes OpenAI embeddings and Qdrant for vector storage and similarity search.
 
 
 import logging
+from typing import Any
 
 from fastapi import BackgroundTasks, Depends, FastAPI
+from fastapi.responses import JSONResponse
 from langchain_community.vectorstores import Qdrant
 from langchain_openai import OpenAIEmbeddings
 from pydantic import BaseModel
@@ -23,6 +25,7 @@ from src.config import (
     QDRANT_COLLECTION_NAME,
     QDRANT_URL,
 )
+from src.extraction.rag import run_rag
 from src.ingestion.ingest import ingest_gdrive_to_vector_store
 from src.utils.ingestion import get_ingestion_id
 
@@ -58,6 +61,23 @@ class RetrievalRequest(BaseModel):
     injection_id: str | None = None
     source: str | None = None
 
+class RAGRequest(BaseModel):
+    """Request model for Retrieval-Augmented Generation (RAG).
+
+    Attributes:
+        question: The question based on which documents are retrieved and a response is generated.
+        k: The number of documents to retrieve for generating the response.
+        folder_id: Optional; the folder ID to filter documents by.
+        injection_id: Optional; the injection ID to filter documents by.
+        source: Optional; the source to filter documents by.
+    """
+
+    question: str
+    k: int
+    folder_id: str | None = None
+    injection_id: str | None = None
+    source: str | None = None
+
 def get_qdrant_client() -> Qdrant:
     """Initialize the Qdrant client."""
     embeddings = OpenAIEmbeddings(model=EMBEDDINGS_MODEL)
@@ -73,7 +93,13 @@ def get_qdrant_client() -> Qdrant:
 
     return Qdrant(client, QDRANT_COLLECTION_NAME, embeddings)
 
+# Exception handler for generic exceptions
+@app.exception_handler(Exception)
+def exception_handler(_: Any, exc: Exception | int) -> JSONResponse:
+    """Handles generic exceptions by returning a JSON response with a 500 status code."""
 
+    logger.error("an exception occurred: %s", str(Exception))
+    return JSONResponse(status_code=500, content={"message": "an unhandled exception occurred", "exc": str(exc)})
 
 @app.post("/ingest/gdrive")
 async def ingest_documents(
@@ -103,3 +129,16 @@ async def retrieve_documents(request: RetrievalRequest, qdrant: Qdrant = Depends
 
     results = qdrant.similarity_search(query=request.query, k=request.k, filter=filters)
     return {"documents": results}
+
+
+@app.post("/rag")
+async def process_rag_request(
+    request: RAGRequest,
+    qdrant: Qdrant = Depends(get_qdrant_client),
+) -> dict[str, str]:
+    """Endpoint to process a Retrieval-Augmented Generation (RAG) request.
+    It retrieves documents based on the question and uses them to generate a response.
+    """
+    result = run_rag(qdrant, request.question, request.k, request.folder_id)
+    return {"response": result}
+
