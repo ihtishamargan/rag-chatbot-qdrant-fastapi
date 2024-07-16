@@ -41,6 +41,23 @@ class IngestionRequest(BaseModel):
 
     gdrive_id: str
 
+class RetrievalRequest(BaseModel):
+    """Request model for retrieving documents similar to a query.
+
+    Attributes:
+        query: The query string to search for similar documents.
+        k: The number of similar documents to retrieve.
+        folder_id: Optional; the folder ID to filter documents by.
+        injection_id: Optional; the injection ID to filter documents by.
+        source: Optional; the source to filter documents by.
+    """
+
+    query: str
+    k: int
+    folder_id: str | None = None
+    injection_id: str | None = None
+    source: str | None = None
+
 def get_qdrant_client() -> Qdrant:
     """Initialize the Qdrant client."""
     embeddings = OpenAIEmbeddings(model=EMBEDDINGS_MODEL)
@@ -70,3 +87,19 @@ async def ingest_documents(
     ingestion_id = get_ingestion_id()
     background_tasks.add_task(ingest_gdrive_to_vector_store, request.gdrive_id, qdrant, ingestion_id)
     return {"message": f"Ingestion started, your ingestion ID is {ingestion_id}"}
+
+@app.post("/retrieve")
+async def retrieve_documents(request: RetrievalRequest, qdrant: Qdrant = Depends(get_qdrant_client)) -> dict[str, str]:
+    """Endpoint to retrieve documents similar to the query from the vector store.
+    Allows filtering by folder_id, injection_id, and source.
+    """
+    filters = {}
+    if request.folder_id:
+        filters["folder_id"] = request.folder_id
+    if request.injection_id:
+        filters["injection_id"] = request.injection_id
+    if request.source:
+        filters["source"] = request.source
+
+    results = qdrant.similarity_search(query=request.query, k=request.k, filter=filters)
+    return {"documents": results}
